@@ -4,7 +4,7 @@ import jwt from 'jsonwebtoken';
 import { query } from '../config/database';
 import { authenticate, requireSuperAdmin, AuthRequest } from '../middleware/auth';
 
-const router = Router();
+const router: Router = Router();
 router.use(authenticate, requireSuperAdmin);
 
 router.get('/tenants', async (req: AuthRequest, res: Response) => {
@@ -84,7 +84,10 @@ router.get('/stats', async (req: AuthRequest, res: Response) => {
 router.post('/tenants/:id/login-as', async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
-    const adminUser = await query(`SELECT u.*, t.name as tenant_name, t.slug as tenant_slug FROM users u JOIN tenants t ON t.id=u.tenant_id WHERE u.tenant_id=$1 AND u.role='admin' LIMIT 1`, [id]);
+    const adminUser = await query(
+      `SELECT u.*, t.name as tenant_name, t.slug as tenant_slug FROM users u JOIN tenants t ON t.id=u.tenant_id WHERE u.tenant_id=$1 AND u.role='admin' LIMIT 1`,
+      [id]
+    );
     if (!adminUser.rows.length) return res.status(404).json({ success: false, message: 'No admin found for this tenant' });
     const u = adminUser.rows[0];
     const token = jwt.sign(

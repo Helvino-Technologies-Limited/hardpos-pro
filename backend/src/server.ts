@@ -1,4 +1,4 @@
-import express from 'express';
+import express, { Application, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
@@ -21,7 +21,7 @@ import userRoutes from './routes/users';
 import reportRoutes from './routes/reports';
 import branchRoutes from './routes/branches';
 
-const app = express();
+const app: Application = express();
 const PORT = process.env.PORT || 5000;
 
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
@@ -40,9 +40,11 @@ app.use('/api/auth/login', authLimiter);
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-app.use(morgan('combined', { stream: { write: (msg) => logger.info(msg.trim()) } }));
+app.use(morgan('combined', { stream: { write: (msg: string) => logger.info(msg.trim()) } }));
 
-app.get('/health', (_, res) => res.json({ status: 'OK', service: 'HARD-POS PRO API', version: '1.0.0', time: new Date().toISOString() }));
+app.get('/health', (_req: Request, res: Response) => {
+  res.json({ status: 'OK', service: 'HARD-POS PRO API', version: '1.0.0', time: new Date().toISOString() });
+});
 
 app.use('/api/auth', authRoutes);
 app.use('/api/superadmin', superadminRoutes);
@@ -55,8 +57,11 @@ app.use('/api/users', userRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/branches', branchRoutes);
 
-app.use('*', (req, res) => res.status(404).json({ success: false, message: `Route ${req.originalUrl} not found` }));
-app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+app.use('*', (req: Request, res: Response) => {
+  res.status(404).json({ success: false, message: `Route ${req.originalUrl} not found` });
+});
+
+app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
   logger.error(err.stack);
   res.status(err.status || 500).json({ success: false, message: err.message || 'Internal server error' });
 });
