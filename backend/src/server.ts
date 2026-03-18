@@ -61,12 +61,12 @@ app.use('/api/users', userRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/branches', branchRoutes);
 
-// 404
-app.use('*', (req: Request, res: Response) => {
+// 404 — Express v5 uses {*path} instead of *
+app.use('/{*path}', (req: Request, res: Response) => {
   res.status(404).json({ success: false, message: `Route ${req.originalUrl} not found` });
 });
 
-// Global error handler — Express v5 handles async errors natively
+// Global error handler
 app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
   logger.error(err.stack || err.message);
   res.status(err.status || 500).json({
