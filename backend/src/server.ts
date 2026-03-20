@@ -19,6 +19,12 @@ import categoryRoutes from './routes/categories';
 import userRoutes from './routes/users';
 import reportRoutes from './routes/reports';
 import branchRoutes from './routes/branches';
+import supplierRoutes from './routes/suppliers';
+import cuttingRoutes from './routes/cutting';
+import rentalRoutes from './routes/rentals';
+import purchaseRoutes from './routes/purchases';
+import serialRoutes from './routes/serials';
+import expenseRoutes from './routes/expenses';
 
 const app: Application = express();
 const PORT = process.env.PORT || 5000;
@@ -60,6 +66,12 @@ app.use('/api/categories', categoryRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/branches', branchRoutes);
+app.use('/api/suppliers', supplierRoutes);
+app.use('/api/cutting', cuttingRoutes);
+app.use('/api/rentals', rentalRoutes);
+app.use('/api/purchases', purchaseRoutes);
+app.use('/api/serials', serialRoutes);
+app.use('/api/expenses', expenseRoutes);
 
 // 404 — Express v5 uses {*path} instead of *
 app.use('/{*path}', (req: Request, res: Response) => {

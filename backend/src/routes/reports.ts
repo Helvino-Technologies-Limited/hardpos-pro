@@ -77,4 +77,121 @@ router.get('/debtors', async (req: AuthRequest, res: Response) => {
   } catch (error) { return res.status(500).json({ success: false, message: 'Server error' }); }
 });
 
+router.get('/rentals', async (req: AuthRequest, res: Response) => {
+  try {
+    const tenantId = req.user!.tenantId;
+    const { from_date, to_date } = req.query;
+    const params: any[] = [tenantId];
+    let where = 'WHERE tr.tenant_id = $1';
+    let i = 2;
+    if (from_date) { where += ` AND tr.date_out >= $${i}`; params.push(from_date); i++; }
+    if (to_date) { where += ` AND tr.date_out <= $${i}`; params.push(to_date + 'T23:59:59'); i++; }
+
+    const [summary, byProduct, daily] = await Promise.all([
+      query(`SELECT
+        COUNT(*) as total_rentals,
+        SUM(CASE WHEN status='out' THEN 1 ELSE 0 END) as active_rentals,
+        SUM(CASE WHEN status='returned' THEN 1 ELSE 0 END) as returned_rentals,
+        SUM(CASE WHEN status='out' AND COALESCE(expected_return_date, expected_return) < NOW() THEN 1 ELSE 0 END) as overdue_rentals,
+        COALESCE(SUM(total_amount),0) as total_revenue,
+        COALESCE(SUM(deposit_amount),0) as total_deposits,
+        COALESCE(SUM(late_fees_charged),0) as total_late_fees
+      FROM tool_rentals tr ${where}`, params),
+      query(`SELECT p.name as product_name,
+        COUNT(*) as rental_count,
+        COALESCE(SUM(tr.total_amount),0) as revenue
+      FROM tool_rentals tr
+      LEFT JOIN products p ON p.id = tr.product_id
+      ${where} GROUP BY p.name ORDER BY rental_count DESC LIMIT 10`, params),
+      query(`SELECT DATE(tr.date_out) as date, COUNT(*) as rentals, COALESCE(SUM(tr.total_amount),0) as revenue
+      FROM tool_rentals tr ${where} GROUP BY DATE(tr.date_out) ORDER BY date ASC`, params),
+    ]);
+
+    return res.json({ success: true, summary: summary.rows[0], byProduct: byProduct.rows, daily: daily.rows });
+  } catch (error) { return res.status(500).json({ success: false, message: 'Server error' }); }
+});
+
+router.get('/cutting', async (req: AuthRequest, res: Response) => {
+  try {
+    const tenantId = req.user!.tenantId;
+    const { from_date, to_date } = req.query;
+    const params: any[] = [tenantId];
+    let where = 'WHERE cl.tenant_id = $1';
+    let i = 2;
+    if (from_date) { where += ` AND cl.created_at >= $${i}`; params.push(from_date); i++; }
+    if (to_date) { where += ` AND cl.created_at <= $${i}`; params.push(to_date + 'T23:59:59'); i++; }
+
+    const [summary, byProduct, daily] = await Promise.all([
+      query(`SELECT
+        COUNT(*) as total_jobs,
+        COALESCE(SUM(cut_quantity_requested),0) as total_cut_qty,
+        COALESCE(SUM(waste_amount),0) as total_waste,
+        COALESCE(AVG(CASE WHEN cut_quantity_requested > 0 THEN (waste_amount/cut_quantity_requested)*100 ELSE 0 END),0) as avg_waste_pct,
+        COALESCE(SUM(cutting_charge),0) as total_revenue
+      FROM cutting_log cl ${where}`, params),
+      query(`SELECT p.name as product_name, COUNT(*) as job_count,
+        COALESCE(SUM(cl.cut_quantity_requested),0) as total_qty,
+        COALESCE(SUM(cl.cutting_charge),0) as revenue
+      FROM cutting_log cl LEFT JOIN products p ON p.id = cl.product_id
+      ${where} GROUP BY p.name ORDER BY job_count DESC LIMIT 10`, params),
+      query(`SELECT DATE(cl.created_at) as date, COUNT(*) as jobs, COALESCE(SUM(cl.cutting_charge),0) as revenue
+      FROM cutting_log cl ${where} GROUP BY DATE(cl.created_at) ORDER BY date ASC`, params),
+    ]);
+
+    return res.json({ success: true, summary: summary.rows[0], byProduct: byProduct.rows, daily: daily.rows });
+  } catch (error) { return res.status(500).json({ success: false, message: 'Server error' }); }
+});
+
+router.get('/purchases', async (req: AuthRequest, res: Response) => {
+  try {
+    const tenantId = req.user!.tenantId;
+    const { from_date, to_date } = req.query;
+    const params: any[] = [tenantId];
+    let where = 'WHERE po.tenant_id = $1';
+    let i = 2;
+    if (from_date) { where += ` AND po.created_at >= $${i}`; params.push(from_date); i++; }
+    if (to_date) { where += ` AND po.created_at <= $${i}`; params.push(to_date + 'T23:59:59'); i++; }
+
+    const [summary, bySupplier, byStatus] = await Promise.all([
+      query(`SELECT
+        COUNT(*) as total_pos,
+        SUM(CASE WHEN status='draft' THEN 1 ELSE 0 END) as draft_pos,
+        SUM(CASE WHEN status='received' THEN 1 ELSE 0 END) as received_pos,
+        COALESCE(SUM(total_amount),0) as total_value
+      FROM purchase_orders po ${where}`, params),
+      query(`SELECT s.name as supplier_name, COUNT(po.id) as po_count, COALESCE(SUM(po.total_amount),0) as total_value
+      FROM purchase_orders po LEFT JOIN suppliers s ON s.id = po.supplier_id
+      ${where} GROUP BY s.name ORDER BY total_value DESC LIMIT 10`, params),
+      query(`SELECT status, COUNT(*) as count, COALESCE(SUM(total_amount),0) as value
+      FROM purchase_orders po ${where} GROUP BY status ORDER BY count DESC`, params),
+    ]);
+
+    return res.json({ success: true, summary: summary.rows[0], bySupplier: bySupplier.rows, byStatus: byStatus.rows });
+  } catch (error) { return res.status(500).json({ success: false, message: 'Server error' }); }
+});
+
+router.get('/expenses', async (req: AuthRequest, res: Response) => {
+  try {
+    const tenantId = req.user!.tenantId;
+    const { from_date, to_date } = req.query;
+    const params: any[] = [tenantId];
+    let where = 'WHERE e.tenant_id = $1';
+    let i = 2;
+    if (from_date) { where += ` AND e.expense_date >= $${i}`; params.push(from_date); i++; }
+    if (to_date) { where += ` AND e.expense_date <= $${i}`; params.push(to_date); i++; }
+
+    const [summary, byCategory] = await Promise.all([
+      query(`SELECT
+        COUNT(*) as total_expenses,
+        COALESCE(SUM(amount),0) as total_amount,
+        COALESCE(AVG(amount),0) as avg_amount
+      FROM expenses e ${where}`, params),
+      query(`SELECT category, COUNT(*) as count, COALESCE(SUM(amount),0) as total
+      FROM expenses e ${where} GROUP BY category ORDER BY total DESC`, params),
+    ]);
+
+    return res.json({ success: true, summary: summary.rows[0], byCategory: byCategory.rows });
+  } catch (error) { return res.status(500).json({ success: false, message: 'Server error' }); }
+});
+
 export default router;
