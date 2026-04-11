@@ -188,7 +188,24 @@ router.post('/', async (req: AuthRequest, res: Response) => {
     }
 
     await client.query('COMMIT');
-    return res.status(201).json({ success: true, sale, message: 'Sale completed' });
+
+    // Return items + payments for receipt generation
+    const itemsForReceipt = await query(
+      'SELECT product_name, quantity, unit_of_measure, unit_price, discount_percent, tax_rate, total_price FROM sale_items WHERE sale_id = $1',
+      [sale.id]
+    );
+    const paymentsForReceipt = await query(
+      'SELECT payment_method, amount, reference_number FROM payments WHERE sale_id = $1',
+      [sale.id]
+    );
+
+    return res.status(201).json({
+      success: true,
+      sale,
+      items: itemsForReceipt.rows,
+      payments: paymentsForReceipt.rows,
+      message: 'Sale completed',
+    });
   } catch (error: any) {
     await client.query('ROLLBACK');
     console.error('Sale error:', error);

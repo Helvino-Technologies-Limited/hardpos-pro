@@ -25,6 +25,7 @@ import rentalRoutes from './routes/rentals';
 import purchaseRoutes from './routes/purchases';
 import serialRoutes from './routes/serials';
 import expenseRoutes from './routes/expenses';
+import settingsRoutes from './routes/settings';
 
 const app: Application = express();
 const PORT = process.env.PORT || 5000;
@@ -72,6 +73,7 @@ app.use('/api/rentals', rentalRoutes);
 app.use('/api/purchases', purchaseRoutes);
 app.use('/api/serials', serialRoutes);
 app.use('/api/expenses', expenseRoutes);
+app.use('/api/settings', settingsRoutes);
 
 // 404 — Express v5 uses {*path} instead of *
 app.use('/{*path}', (req: Request, res: Response) => {
