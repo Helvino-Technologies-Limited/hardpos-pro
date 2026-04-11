@@ -69,7 +69,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
         COALESCE(SUM(i.quantity_reserved),  0)                       AS quantity_reserved,
         COALESCE(SUM(i.quantity_on_hand) - SUM(i.quantity_reserved), 0) AS quantity_available,
         -- pick any existing branch_id for this product (used by adjust modal as default)
-        MIN(i.branch_id)                                             AS branch_id,
+        MIN(i.branch_id::text)::uuid                                 AS branch_id,
         MIN(b.name)                                                  AS branch_name,
         MIN(i.location_zone)                                         AS location_zone,
         MIN(i.rack_number)                                           AS rack_number,
