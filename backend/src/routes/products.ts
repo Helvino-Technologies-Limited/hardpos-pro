@@ -120,7 +120,18 @@ router.put('/:id', requireManager, async (req: AuthRequest, res: Response) => {
     const keys = Object.keys(fields).filter(k => ALLOWED_COLUMNS.has(k));
     if (!keys.length) return res.status(400).json({ success: false, message: 'No valid fields to update' });
 
-    const values = keys.map(k => fields[k]);
+    // Numeric columns must be NULL (not empty string) when blank
+    const NUMERIC_COLUMNS = new Set([
+      'retail_price', 'trade_price', 'wholesale_price', 'cost_price',
+      'tax_rate', 'weight_per_unit', 'length', 'width', 'height',
+      'thickness', 'min_quantity', 'reorder_level', 'max_stock',
+      'rental_daily_rate', 'rental_deposit',
+    ]);
+    const values = keys.map(k => {
+      const v = fields[k];
+      if (NUMERIC_COLUMNS.has(k) && (v === '' || v === null || v === undefined)) return null;
+      return v;
+    });
     const setClauses = keys.map((k, i) => `${k} = $${i + 3}`).join(', ');
     const result = await query(
       `UPDATE products SET ${setClauses}, updated_at = NOW() WHERE id = $1 AND tenant_id = $2 RETURNING *`,
