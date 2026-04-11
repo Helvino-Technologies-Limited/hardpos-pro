@@ -49,13 +49,56 @@ router.get('/:id', async (req: AuthRequest, res: Response) => {
 router.post('/', requireManager, async (req: AuthRequest, res: Response) => {
   try {
     const tenantId = req.user!.tenantId;
-    const { name, sku, barcode, description, category_id, unit_id, product_type, retail_price, trade_price, wholesale_price, cost_price, tax_rate, tax_exempt, weight_per_unit, length, width, height, thickness, gauge, track_serials, track_batches, allow_fractional, min_quantity, reorder_level, max_stock, image_url, tags, attributes, is_rentable, rental_daily_rate, rental_deposit } = req.body;
+    const {
+      name, sku, barcode, description, category_id, unit_id, product_type,
+      retail_price, trade_price, wholesale_price, cost_price,
+      tax_rate, tax_exempt, weight_per_unit, length, width, height, thickness, gauge,
+      track_serials, track_batches, allow_fractional, min_quantity, reorder_level, max_stock,
+      image_url, tags, attributes, is_rentable, rental_daily_rate, rental_deposit,
+      // Opening stock fields
+      opening_stock, opening_stock_branch_id, opening_stock_notes,
+    } = req.body;
+
     const result = await query(`
       INSERT INTO products (tenant_id, name, sku, barcode, description, category_id, unit_id, product_type, retail_price, trade_price, wholesale_price, cost_price, tax_rate, tax_exempt, weight_per_unit, length, width, height, thickness, gauge, track_serials, track_batches, allow_fractional, min_quantity, reorder_level, max_stock, image_url, tags, attributes, is_rentable, rental_daily_rate, rental_deposit)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32) RETURNING *
     `, [tenantId, name, sku, barcode, description, category_id, unit_id, product_type || 'standard', retail_price, trade_price, wholesale_price, cost_price, tax_rate || 16, tax_exempt || false, weight_per_unit, length, width, height, thickness, gauge, track_serials || false, track_batches || false, allow_fractional || false, min_quantity || 1, reorder_level || 0, max_stock, image_url, tags || [], JSON.stringify(attributes || {}), is_rentable || false, rental_daily_rate, rental_deposit]);
-    return res.status(201).json({ success: true, product: result.rows[0] });
-  } catch (error: any) { return res.status(500).json({ success: false, message: error.message }); }
+
+    const product = result.rows[0];
+
+    // If opening stock is provided, create inventory record immediately
+    const qty = opening_stock ? parseFloat(opening_stock) : 0;
+    if (qty > 0) {
+      // Resolve branch: use provided, else main branch
+      let branchId = opening_stock_branch_id || null;
+      if (!branchId) {
+        const mainBranch = await query(
+          'SELECT id FROM branches WHERE tenant_id = $1 AND is_main = true LIMIT 1',
+          [tenantId]
+        );
+        branchId = mainBranch.rows[0]?.id || null;
+      }
+      if (branchId) {
+        await query(
+          `INSERT INTO inventory (tenant_id, product_id, branch_id, quantity_on_hand)
+           VALUES ($1,$2,$3,$4)
+           ON CONFLICT (tenant_id, product_id, branch_id)
+           DO UPDATE SET quantity_on_hand = inventory.quantity_on_hand + $4, updated_at = NOW()`,
+          [tenantId, product.id, branchId, qty]
+        );
+        await query(
+          `INSERT INTO stock_adjustments (tenant_id, branch_id, product_id, adjustment_type, quantity_before, quantity_change, quantity_after, reason, created_by)
+           VALUES ($1,$2,$3,'add',0,$4,$4,$5,$6)`,
+          [tenantId, branchId, product.id, qty, opening_stock_notes || 'Opening stock', req.user!.id]
+        );
+      }
+    }
+
+    return res.status(201).json({ success: true, product: { ...product, total_stock: qty } });
+  } catch (error: any) {
+    console.error('Product create error:', error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
 });
 
 router.put('/:id', requireManager, async (req: AuthRequest, res: Response) => {
