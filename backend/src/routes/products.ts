@@ -105,13 +105,32 @@ router.put('/:id', requireManager, async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
     const tenantId = req.user!.tenantId;
+
+    // Whitelist actual product columns — reject computed/joined fields like category_name, total_stock, etc.
+    const ALLOWED_COLUMNS = new Set([
+      'name', 'sku', 'barcode', 'description', 'category_id', 'unit_id', 'product_type',
+      'retail_price', 'trade_price', 'wholesale_price', 'cost_price',
+      'tax_rate', 'tax_exempt', 'weight_per_unit', 'length', 'width', 'height',
+      'thickness', 'gauge', 'track_serials', 'track_batches', 'allow_fractional',
+      'min_quantity', 'reorder_level', 'max_stock', 'image_url', 'tags', 'attributes',
+      'is_active', 'is_rentable', 'rental_daily_rate', 'rental_deposit',
+    ]);
+
     const fields = req.body;
-    const keys = Object.keys(fields);
-    const values = Object.values(fields);
+    const keys = Object.keys(fields).filter(k => ALLOWED_COLUMNS.has(k));
+    if (!keys.length) return res.status(400).json({ success: false, message: 'No valid fields to update' });
+
+    const values = keys.map(k => fields[k]);
     const setClauses = keys.map((k, i) => `${k} = $${i + 3}`).join(', ');
-    const result = await query(`UPDATE products SET ${setClauses}, updated_at = NOW() WHERE id = $1 AND tenant_id = $2 RETURNING *`, [id, tenantId, ...values]);
+    const result = await query(
+      `UPDATE products SET ${setClauses}, updated_at = NOW() WHERE id = $1 AND tenant_id = $2 RETURNING *`,
+      [id, tenantId, ...values]
+    );
     return res.json({ success: true, product: result.rows[0] });
-  } catch (error: any) { return res.status(500).json({ success: false, message: error.message }); }
+  } catch (error: any) {
+    console.error('Product update error:', error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
 });
 
 router.delete('/:id', requireManager, async (req: AuthRequest, res: Response) => {
