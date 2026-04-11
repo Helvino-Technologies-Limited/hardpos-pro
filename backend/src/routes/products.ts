@@ -66,26 +66,26 @@ router.post('/', requireManager, async (req: AuthRequest, res: Response) => {
 
     const product = result.rows[0];
 
-    // If opening stock is provided, create inventory record immediately
+    // Always create an inventory record so the product appears in inventory management
     const qty = opening_stock ? parseFloat(opening_stock) : 0;
-    if (qty > 0) {
-      // Resolve branch: use provided, else main branch
-      let branchId = opening_stock_branch_id || null;
-      if (!branchId) {
-        const mainBranch = await query(
-          'SELECT id FROM branches WHERE tenant_id = $1 AND is_main = true LIMIT 1',
-          [tenantId]
-        );
-        branchId = mainBranch.rows[0]?.id || null;
-      }
-      if (branchId) {
-        await query(
-          `INSERT INTO inventory (tenant_id, product_id, branch_id, quantity_on_hand)
-           VALUES ($1,$2,$3,$4)
-           ON CONFLICT (tenant_id, product_id, branch_id)
-           DO UPDATE SET quantity_on_hand = inventory.quantity_on_hand + $4, updated_at = NOW()`,
-          [tenantId, product.id, branchId, qty]
-        );
+    // Resolve branch: use provided, else main branch
+    let branchId = opening_stock_branch_id || null;
+    if (!branchId) {
+      const mainBranch = await query(
+        'SELECT id FROM branches WHERE tenant_id = $1 AND is_main = true LIMIT 1',
+        [tenantId]
+      );
+      branchId = mainBranch.rows[0]?.id || null;
+    }
+    if (branchId) {
+      await query(
+        `INSERT INTO inventory (tenant_id, product_id, branch_id, quantity_on_hand)
+         VALUES ($1,$2,$3,$4)
+         ON CONFLICT (tenant_id, product_id, branch_id)
+         DO UPDATE SET quantity_on_hand = inventory.quantity_on_hand + $4, updated_at = NOW()`,
+        [tenantId, product.id, branchId, qty]
+      );
+      if (qty > 0) {
         await query(
           `INSERT INTO stock_adjustments (tenant_id, branch_id, product_id, adjustment_type, quantity_before, quantity_change, quantity_after, reason, created_by)
            VALUES ($1,$2,$3,'add',0,$4,$4,$5,$6)`,
