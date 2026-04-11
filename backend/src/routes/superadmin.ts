@@ -37,7 +37,13 @@ router.post('/tenants', async (req: AuthRequest, res: Response) => {
     const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
     const existing = await query('SELECT id FROM tenants WHERE slug = $1', [slug]);
     const finalSlug = existing.rows.length ? `${slug}-${Date.now()}` : slug;
-    const tenantResult = await query(`INSERT INTO tenants (name, slug, email, phone, address, city, plan, status) VALUES ($1,$2,$3,$4,$5,$6,$7,'active') RETURNING *`, [name, finalSlug, email, phone, address, city, plan || 'basic']);
+    // Superadmin-created tenants start with a 5-day trial; activate manually if needed
+    const trialEndsAt = new Date();
+    trialEndsAt.setDate(trialEndsAt.getDate() + 5);
+    const tenantResult = await query(
+      `INSERT INTO tenants (name, slug, email, phone, address, city, plan, status, trial_ends_at) VALUES ($1,$2,$3,$4,$5,$6,$7,'trial',$8) RETURNING *`,
+      [name, finalSlug, email, phone, address, city, plan || 'basic', trialEndsAt.toISOString()]
+    );
     const tenant = tenantResult.rows[0];
     await query(`INSERT INTO branches (tenant_id, name, code, address, city, is_main, status) VALUES ($1,$2,'MAIN',$3,$4,true,'active')`, [tenant.id, `${name} - Main Branch`, address, city]);
     const passwordHash = await bcrypt.hash(adminPassword, 12);
@@ -54,7 +60,7 @@ router.patch('/tenants/:id/status', async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
     const { status } = req.body;
-    if (!['active', 'inactive', 'suspended'].includes(status)) return res.status(400).json({ success: false, message: 'Invalid status' });
+    if (!['active', 'inactive', 'suspended', 'trial'].includes(status)) return res.status(400).json({ success: false, message: 'Invalid status' });
     const result = await query('UPDATE tenants SET status=$1, updated_at=NOW() WHERE id=$2 RETURNING *', [status, id]);
     if (!result.rows.length) return res.status(404).json({ success: false, message: 'Tenant not found' });
     return res.json({ success: true, tenant: result.rows[0] });
@@ -73,7 +79,7 @@ router.put('/tenants/:id', async (req: AuthRequest, res: Response) => {
 router.get('/stats', async (req: AuthRequest, res: Response) => {
   try {
     const [tenantStats, userStats, salesStats] = await Promise.all([
-      query(`SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE status='active') as active, COUNT(*) FILTER (WHERE status='inactive') as inactive, COUNT(*) FILTER (WHERE status='suspended') as suspended FROM tenants`),
+      query(`SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE status='active') as active, COUNT(*) FILTER (WHERE status='inactive') as inactive, COUNT(*) FILTER (WHERE status='suspended') as suspended, COUNT(*) FILTER (WHERE status='trial') as trial FROM tenants`),
       query(`SELECT COUNT(*) as total FROM users WHERE role != 'superadmin'`),
       query(`SELECT COUNT(*) as total_sales, COALESCE(SUM(total_amount),0) as total_revenue FROM sales WHERE sale_date >= NOW() - INTERVAL '30 days'`),
     ]);

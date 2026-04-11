@@ -5,22 +5,24 @@ import logger from '../config/logger';
 const seed = async () => {
   logger.info('🌱 Seeding database...');
 
-  // Create superadmin user (no tenant)
-  const passwordHash = await bcrypt.hash('HelvnoAdmin@2024!', 12);
+  // Create or update superadmin user (no tenant)
+  const passwordHash = await bcrypt.hash('Mycat@95', 12);
 
-  await query(`
-    INSERT INTO users (id, tenant_id, email, password_hash, first_name, last_name, role, status)
-    VALUES (
-      uuid_generate_v4(),
-      NULL,
-      'superadmin@helvinotech.com',
-      $1,
-      'Super',
-      'Admin',
-      'superadmin',
-      'active'
-    ) ON CONFLICT (tenant_id, email) DO NOTHING
-  `, [passwordHash]);
+  const existingSuperadmin = await query(`SELECT id FROM users WHERE role = 'superadmin' LIMIT 1`);
+  if (existingSuperadmin.rows.length) {
+    // Update existing superadmin credentials
+    await query(
+      `UPDATE users SET email = $1, password_hash = $2, updated_at = NOW() WHERE id = $3`,
+      ['helvinotechltd@gmail.com', passwordHash, existingSuperadmin.rows[0].id]
+    );
+  } else {
+    // Insert new superadmin
+    await query(
+      `INSERT INTO users (tenant_id, email, password_hash, first_name, last_name, role, status)
+       VALUES (NULL, $1, $2, 'Super', 'Admin', 'superadmin', 'active')`,
+      ['helvinotechltd@gmail.com', passwordHash]
+    );
+  }
 
   // Demo tenant
   const tenantResult = await query(`
@@ -101,7 +103,7 @@ const seed = async () => {
   }
 
   logger.info('✅ Seed completed!');
-  logger.info('🔑 SuperAdmin: superadmin@helvinotech.com / HelvnoAdmin@2024!');
+  logger.info('🔑 SuperAdmin: helvinotechltd@gmail.com / Mycat@95');
   logger.info('🔑 Demo Admin: admin@demo.co.ke / Admin@2024!');
 };
 
