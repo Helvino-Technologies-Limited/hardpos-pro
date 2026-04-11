@@ -12,6 +12,24 @@ router.get('/', async (req: AuthRequest, res: Response) => {
     const tenantId = req.user!.tenantId;
     const { branch_id, low_stock, search } = req.query;
 
+    // Auto-backfill: ensure every active product has at least one inventory row
+    // (uses the tenant's main branch; ON CONFLICT DO NOTHING makes this idempotent)
+    await query(`
+      INSERT INTO inventory (tenant_id, product_id, branch_id, quantity_on_hand)
+      SELECT p.tenant_id, p.id, b.id, 0
+      FROM products p
+      CROSS JOIN (
+        SELECT id FROM branches WHERE tenant_id = $1 AND is_main = true LIMIT 1
+      ) b
+      WHERE p.tenant_id = $1
+        AND p.is_active = true
+        AND NOT EXISTS (
+          SELECT 1 FROM inventory i
+          WHERE i.product_id = p.id AND i.tenant_id = p.tenant_id
+        )
+      ON CONFLICT (tenant_id, product_id, branch_id) DO NOTHING
+    `, [tenantId]);
+
     let where = 'WHERE p.tenant_id = $1 AND p.is_active = true';
     const params: any[] = [tenantId];
     let idx = 2;
