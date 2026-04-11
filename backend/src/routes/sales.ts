@@ -108,16 +108,19 @@ router.post('/', async (req: AuthRequest, res: Response) => {
 
     for (const item of items) {
       const itemTotal = item.quantity * item.unit_price * (1 - (item.discount_percent || 0) / 100);
-      const itemTax = item.tax_exempt ? 0 : itemTotal * ((item.tax_rate || 16) / 100);
+      // Use nullish check — tax_rate=0 is valid (exempt), don't fall back to 16
+      const effectiveTaxRate = (item.tax_rate != null && item.tax_rate !== '') ? Number(item.tax_rate) : 16;
+      const itemTax = effectiveTaxRate === 0 ? 0 : itemTotal * (effectiveTaxRate / 100);
       subtotal += itemTotal;
       taxAmount += itemTax;
     }
 
     const discountAmt = discount_amount || 0;
-    const totalAmount = subtotal + taxAmount - discountAmt;
-    const amountPaid = payments ? payments.reduce((sum: number, p: any) => sum + p.amount, 0) : totalAmount;
-    const balanceDue = totalAmount - amountPaid;
-    const paymentStatus = balanceDue <= 0 ? 'paid' : amountPaid > 0 ? 'partial' : 'pending';
+    const totalAmount = Math.round((subtotal + taxAmount - discountAmt) * 100) / 100;
+    const amountPaid = payments ? Math.round(payments.reduce((sum: number, p: any) => sum + Number(p.amount), 0) * 100) / 100 : totalAmount;
+    // Round to cents before comparing to avoid float drift marking full payments as partial
+    const balanceDue = Math.max(0, Math.round((totalAmount - amountPaid) * 100) / 100);
+    const paymentStatus = balanceDue === 0 ? 'paid' : amountPaid > 0 ? 'partial' : 'pending';
 
     // Insert sale
     const saleResult = await client.query(`
@@ -140,7 +143,8 @@ router.post('/', async (req: AuthRequest, res: Response) => {
     // Insert sale items & update inventory
     for (const item of items) {
       const itemTotal = item.quantity * item.unit_price * (1 - (item.discount_percent || 0) / 100);
-      const itemTax = item.tax_exempt ? 0 : itemTotal * ((item.tax_rate || 16) / 100);
+      const effectiveTaxRate = (item.tax_rate != null && item.tax_rate !== '') ? Number(item.tax_rate) : 16;
+      const itemTax = effectiveTaxRate === 0 ? 0 : itemTotal * (effectiveTaxRate / 100);
 
       await client.query(`
         INSERT INTO sale_items (
@@ -151,7 +155,7 @@ router.post('/', async (req: AuthRequest, res: Response) => {
       `, [
         sale.id, item.product_id, item.product_name, item.quantity, item.unit_of_measure,
         item.unit_price, item.discount_percent || 0, itemTotal * ((item.discount_percent || 0) / 100),
-        item.tax_rate || 16, itemTax, itemTotal + itemTax,
+        effectiveTaxRate, itemTax, itemTotal + itemTax,
         item.serial_number_id, item.batch_id, item.is_cut_to_size || false, item.cut_instructions, item.notes
       ]);
 
