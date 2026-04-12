@@ -133,13 +133,13 @@ router.get('/inventory-valuation', async (req: AuthRequest, res: Response) => {
       query(`
         SELECT p.name, p.sku, c.name as category,
           COALESCE(i.quantity_on_hand,0) as qty_on_hand,
-          COALESCE(p.reorder_point,0) as reorder_point,
+          COALESCE(p.reorder_level,0) as reorder_point,
           p.retail_price
         FROM products p
         LEFT JOIN inventory i ON i.product_id = p.id AND i.tenant_id = p.tenant_id
         LEFT JOIN categories c ON c.id = p.category_id
         WHERE p.tenant_id = $1 AND p.is_active = true
-          AND COALESCE(i.quantity_on_hand,0) <= COALESCE(p.reorder_point, 5)
+          AND COALESCE(i.quantity_on_hand,0) <= COALESCE(p.reorder_level, 5)
         ORDER BY i.quantity_on_hand ASC NULLS FIRST LIMIT 30
       `, [tenantId]),
 
@@ -148,7 +148,7 @@ router.get('/inventory-valuation', async (req: AuthRequest, res: Response) => {
           COUNT(p.id) as total_products,
           COUNT(CASE WHEN COALESCE(i.quantity_on_hand,0) <= 0 THEN 1 END) as out_of_stock,
           COUNT(CASE WHEN COALESCE(i.quantity_on_hand,0) > 0
-            AND COALESCE(i.quantity_on_hand,0) <= COALESCE(p.reorder_point,5) THEN 1 END) as low_stock
+            AND COALESCE(i.quantity_on_hand,0) <= COALESCE(p.reorder_level,5) THEN 1 END) as low_stock
         FROM products p
         LEFT JOIN inventory i ON i.product_id = p.id AND i.tenant_id = p.tenant_id
         WHERE p.tenant_id = $1 AND p.is_active = true
@@ -332,12 +332,11 @@ router.get('/cutting', async (req: AuthRequest, res: Response) => {
       query(`
         SELECT cl.created_at, p.name as product_name,
           cl.cut_quantity_requested, cl.waste_amount, cl.cutting_charge,
-          u.first_name || ' ' || u.last_name as operator_name,
-          c.name as customer_name
+          cl.customer_name,
+          u.first_name || ' ' || u.last_name as operator_name
         FROM cutting_log cl
         LEFT JOIN products p ON p.id = cl.product_id
-        LEFT JOIN users u ON u.id = cl.user_id
-        LEFT JOIN customers c ON c.id = cl.customer_id
+        LEFT JOIN users u ON u.id = cl.operator_id
         ${where} ORDER BY cl.created_at DESC LIMIT 30
       `, params),
     ]);
