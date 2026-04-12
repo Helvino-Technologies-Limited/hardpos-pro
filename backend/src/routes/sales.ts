@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import { query, getClient } from '../config/database';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { tenantContext } from '../middleware/tenantContext';
+import { writeAuditLog } from './reports';
 
 const router = Router();
 router.use(authenticate, tenantContext);
@@ -192,6 +193,14 @@ router.post('/', async (req: AuthRequest, res: Response) => {
     }
 
     await client.query('COMMIT');
+
+    // Write audit log (fire-and-forget, non-blocking)
+    writeAuditLog(
+      tenantId, req.user!.id, 'CREATE_SALE', 'sale', sale.id,
+      null,
+      { sale_number: sale.sale_number, total_amount: totalAmount, customer_name, sale_type, payment_status: paymentStatus },
+      req.ip,
+    );
 
     // Return items + payments for receipt generation
     const itemsForReceipt = await query(
