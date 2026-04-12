@@ -85,8 +85,10 @@ router.post('/', async (req: AuthRequest, res: Response): Promise<void> => {
     const userId = req.user!.id;
     const { product_id, customer_id, serial_number_id, daily_rate, weekly_rate, deposit_amount, expected_return_date, notes, condition_out = 'good' } = req.body;
 
-    if (!product_id || !customer_id || !daily_rate || !deposit_amount) {
-      res.status(400).json({ success: false, message: 'Product, customer, daily rate and deposit are required' });
+    const parsedDailyRate  = parseFloat(String(daily_rate));
+    const parsedDeposit    = parseFloat(String(deposit_amount ?? 0));
+    if (!product_id || !customer_id || isNaN(parsedDailyRate) || parsedDailyRate <= 0) {
+      res.status(400).json({ success: false, message: 'Product, customer and daily rate are required' });
       return;
     }
 
@@ -99,7 +101,7 @@ router.post('/', async (req: AuthRequest, res: Response): Promise<void> => {
         date_out, status, condition_out, notes, created_by)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$9,NOW(),'out',$10,$11,$12) RETURNING *`,
       [tenantId, rentalNumber, product_id, customer_id, serial_number_id || null,
-        daily_rate, weekly_rate || null, deposit_amount,
+        parsedDailyRate, weekly_rate ? parseFloat(String(weekly_rate)) : null, parsedDeposit,
         expected_return_date || null, condition_out, notes, userId]
     );
 

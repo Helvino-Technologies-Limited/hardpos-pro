@@ -33,7 +33,7 @@ router.get('/', async (req: AuthRequest, res: Response): Promise<void> => {
         u.first_name || ' ' || u.last_name AS operator_name
       FROM cutting_log cl
       LEFT JOIN products p ON p.id = cl.product_id
-      LEFT JOIN units_of_measure um ON um.id = p.unit_of_measure_id
+      LEFT JOIN units_of_measure um ON um.id = p.unit_id
       LEFT JOIN users u ON u.id = cl.operator_id
       WHERE cl.tenant_id = $1
     `;
