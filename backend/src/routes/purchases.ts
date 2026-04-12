@@ -91,7 +91,10 @@ router.post('/', requireManager, async (req: AuthRequest, res: Response): Promis
     await client.query('BEGIN');
     const tenantId = req.user!.tenantId;
     const userId = req.user!.id;
-    const { supplier_id, expected_delivery, payment_terms = 'net_30', notes, is_special_order = false, customer_name, items = [] } = req.body;
+    const { supplier_id, expected_delivery, payment_terms = 30, notes, is_special_order = false, customer_name, items = [] } = req.body;
+    // Accept both string ('net_30') and numeric (30) payment_terms
+    const termDays = typeof payment_terms === 'number' ? payment_terms
+      : ({ cash_on_delivery: 0, net_7: 7, net_14: 14, net_30: 30, net_60: 60, net_90: 90 }[String(payment_terms)] ?? parseInt(String(payment_terms)) || 30);
 
     if (!supplier_id) { res.status(400).json({ success: false, message: 'Supplier is required' }); return; }
     if (!items.length) { res.status(400).json({ success: false, message: 'Add at least one item' }); return; }
@@ -102,9 +105,9 @@ router.post('/', requireManager, async (req: AuthRequest, res: Response): Promis
 
     const po = await client.query(
       `INSERT INTO purchase_orders (tenant_id, supplier_id, po_number, status, expected_delivery,
-        total_amount, total_value, notes, is_special_order, customer_name, created_by)
-       VALUES ($1,$2,$3,'draft',$4,$5,$5,$6,$7,$8,$9) RETURNING *`,
-      [tenantId, supplier_id, poNumber, expected_delivery || null, totalValue, notes, is_special_order, customer_name || null, userId]
+        total_amount, total_value, payment_terms, notes, is_special_order, customer_name, created_by)
+       VALUES ($1,$2,$3,'draft',$4,$5,$5,$6,$7,$8,$9,$10) RETURNING *`,
+      [tenantId, supplier_id, poNumber, expected_delivery || null, totalValue, termDays, notes, is_special_order, customer_name || null, userId]
     );
 
     for (const item of items) {

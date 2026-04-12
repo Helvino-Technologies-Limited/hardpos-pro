@@ -6,32 +6,20 @@ import pool from '../config/database';
 const router: Router = Router();
 router.use(authenticate, tenantContext);
 
-async function ensureExpenseTable() {
+async function ensureExpenseColumns() {
   try {
     await pool.query(`
-      CREATE TABLE IF NOT EXISTS expenses (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        tenant_id UUID NOT NULL,
-        expense_number VARCHAR(50),
-        category VARCHAR(100) NOT NULL,
-        description TEXT NOT NULL,
-        amount DECIMAL(15,2) NOT NULL,
-        payment_method VARCHAR(50) DEFAULT 'cash',
-        reference VARCHAR(255),
-        expense_date DATE NOT NULL DEFAULT CURRENT_DATE,
-        approved_by UUID,
-        recorded_by UUID,
-        receipt_url TEXT,
-        notes TEXT,
-        created_at TIMESTAMPTZ DEFAULT NOW(),
-        updated_at TIMESTAMPTZ DEFAULT NOW()
-      )
+      ALTER TABLE expenses
+        ADD COLUMN IF NOT EXISTS expense_number VARCHAR(50),
+        ADD COLUMN IF NOT EXISTS reference VARCHAR(255),
+        ADD COLUMN IF NOT EXISTS notes TEXT,
+        ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()
     `);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_expenses_tenant ON expenses(tenant_id)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_expenses_date ON expenses(expense_date)`);
   } catch (_) {}
 }
-ensureExpenseTable();
+ensureExpenseColumns();
 
 // GET /api/expenses
 router.get('/', async (req: AuthRequest, res: Response): Promise<void> => {
@@ -41,9 +29,9 @@ router.get('/', async (req: AuthRequest, res: Response): Promise<void> => {
 
     let queryStr = `
       SELECT e.*,
-        u.first_name || ' ' || u.last_name AS recorded_by_name
+        u.first_name || ' ' || u.last_name AS created_by_name
       FROM expenses e
-      LEFT JOIN users u ON u.id = e.recorded_by
+      LEFT JOIN users u ON u.id = e.created_by
       WHERE e.tenant_id = $1
     `;
     const params: any[] = [tenantId];
@@ -106,7 +94,7 @@ router.post('/', async (req: AuthRequest, res: Response): Promise<void> => {
     const expNumber = `EXP-${new Date().getFullYear()}-${String(parseInt(countRes.rows[0].count) + 1).padStart(4, '0')}`;
 
     const result = await pool.query(
-      `INSERT INTO expenses (tenant_id, expense_number, category, description, amount, payment_method, reference, expense_date, notes, recorded_by)
+      `INSERT INTO expenses (tenant_id, expense_number, category, description, amount, payment_method, reference, expense_date, notes, created_by)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
       [tenantId, expNumber, category, description, parseFloat(amount), payment_method, reference, expense_date || new Date().toISOString().split('T')[0], notes, userId]
     );
