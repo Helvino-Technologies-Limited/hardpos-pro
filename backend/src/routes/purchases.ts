@@ -93,8 +93,9 @@ router.post('/', requireManager, async (req: AuthRequest, res: Response): Promis
     const userId = req.user!.id;
     const { supplier_id, expected_delivery, payment_terms = 30, notes, is_special_order = false, customer_name, items = [] } = req.body;
     // Accept both string ('net_30') and numeric (30) payment_terms
+    const termMap: Record<string, number> = { cash_on_delivery: 0, net_7: 7, net_14: 14, net_30: 30, net_60: 60, net_90: 90 };
     const termDays = typeof payment_terms === 'number' ? payment_terms
-      : ({ cash_on_delivery: 0, net_7: 7, net_14: 14, net_30: 30, net_60: 60, net_90: 90 }[String(payment_terms)] ?? parseInt(String(payment_terms)) || 30);
+      : (termMap[String(payment_terms)] !== undefined ? termMap[String(payment_terms)] : (parseInt(String(payment_terms)) || 30));
 
     if (!supplier_id) { res.status(400).json({ success: false, message: 'Supplier is required' }); return; }
     if (!items.length) { res.status(400).json({ success: false, message: 'Add at least one item' }); return; }
